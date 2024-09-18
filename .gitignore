@@ -1,2 +1,6 @@
 /syn_prob/venv
 /syn_prob/note.txt
+/venv
+/syn_prob/__pychace__
+syn_prob/__pycache__/bilinearLayerTraining.cpython-311.pyc
+syn_prob/test.py

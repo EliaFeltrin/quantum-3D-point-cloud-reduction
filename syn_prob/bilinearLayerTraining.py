@@ -3,36 +3,77 @@ import torch.nn as nn
 import torch.optim as optim
 import random
 import itertools
+import math
 
-def generate_random_binary_vector(n):
-    # Generates a binary vector of length n
-    return torch.randint(0, 2, (n,), dtype=torch.int8)
-
-def generate_F_set(n, l):
-    # Creates a set of random binary vectors of length n
-    F = {tuple(generate_random_binary_vector(n).tolist()) for _ in range(l)}
-    return set(F), len(F)
-
-def create_map(F, MVal):
-    # Select a random element m from F
-    tmpLst = list(F).copy() 
-    random.shuffle(tmpLst)
-    m = None
-    for p in tmpLst:
-        if(p.count(1) >= b):
-            m = p
-            break
+def generate_random_binary_vector(n, n_ones):
+    # Initialize a zero vector of length n
+    vector = torch.zeros(n, dtype=torch.float32)
     
+    # Randomly choose `n_ones` unique indices to set to 1
+    indices = torch.randperm(n)[:n_ones]
+    
+    # Set the chosen indices to 1
+    vector[indices] = 1
+    
+    return vector
+
+def generate_F_set(n, l, m_vector):
+    # Compute the coefficient A of the hyperbolic function that determines the number of points in the training set based on increasing distance from m
+    denom = sum(1 / i for i in range(1, n + 1))
+    A = l / denom
+
+    # Initialize set F and add the original vector
+    F = set()
+    F.add(tuple(m_vector.tolist()))  # Add the initial m_vector to the set
+    nPoint = 0
+    j = 1
+
+    # Populating F with at least l points
+    while len(F) < l:
+        oldFlen = len(F)
+        part = math.ceil(A / j)
+
+        # Generating new vectors with `j` bits of distance from `m_vector`
+        while len(F) - oldFlen < part:
+            # Create a copy of m_vector
+            vector = m_vector.clone()
+            # Generate `j` random positions to flip
+            flip_positions = random.sample(range(n), j)
+            vector[flip_positions] = 1 - vector[flip_positions]  # Flip the bits at selected positions
+
+            # Add the new vector to F
+            F.add(tuple(vector.tolist()))
+
+        nPoint += part
+        j += 1
+
+    return F, len(F)
+    
+
+def hamming_distance(v1, v2):
+    # Calculate the Hamming distance between two binary vectors
+    return (v1 != v2).sum().item()
+
+def create_map(F, MVal, mVal, m, overlap_factor=0.1):
     # Initialize the map M
     M = {}
     
-    for f in F:
-        if f == m:
-            M[f] = mVal  # Map m to the lowest value
-        else:
-            M[f] = random.uniform(mVal, MVal)  # Map other vectors to a random positive value
+    # Compute the maximum possible Hamming distance
+    max_dist = len(m)
     
-    return M, m
+    # Assign values based on the Hamming distance
+    for f_tuple in F:
+        f = torch.tensor(f_tuple)
+        dist = hamming_distance(f, m)
+        if dist == 0:
+            M[f_tuple] = mVal  # Map m to the lowest value
+        else:
+            # The value should increase as the distance increases, but with some overlap
+            range_min = mVal + (dist / max_dist) * (MVal - mVal)
+            range_max = range_min + overlap_factor * (MVal - mVal)
+            M[f_tuple] = random.uniform(range_min, min(range_max, MVal))
+    
+    return M
 
 # Define a bilinear layer without bias
 class BilinearLayer(nn.Module):
@@ -84,48 +125,53 @@ class BilinearLayer(nn.Module):
 
         elif init_type == 'random':
             # Random initialization (PyTorch default)
-            nn.init.normal_(weight, mean=0.0, std=0.01)
+            nn.init.normal_(weight, mean=randomMeanInit, std=randomStdInit)
+            with torch.no_grad():
+                Q = self.bilinear.weight
+                Q.clamp_(min=forcedMinValQUT)  # Ensure all values are positive
+                Q.copy_(torch.triu(Q))  # Ensure upper triangular
+            if(verbose):
+                print("Q init:")
+                print(Q)
+                print("\n")
 
         else:
             raise ValueError(f"Unknown initialization type: {init_type}")
 
         # Register backward hook to modify the weights after each backward pass
-        self.bilinear.weight.register_hook(self.enforce_upper_triangular)
+        self.bilinear.weight.register_hook(self.enforce_upper_triangular_and_positive)
 
     def forward(self, x1, x2):
-        # Force the weight matrix to be upper triangular in the forward pass
+        # Force the weight matrix to be upper triangular and positive in the forward pass
         with torch.no_grad():
             Q = self.bilinear.weight
-            Q.copy_(torch.triu(Q))  # Zero out the lower triangular part (including below diagonal)
+            Q.clamp_(min=forcedMinValQUT)  # Ensure all values are positive
+            Q.copy_(torch.triu(Q))  # Ensure upper triangular
 
         return self.bilinear(x1, x2)
 
-    def enforce_upper_triangular(self, grad):
-        """ Hook function that forces the weight to be upper triangular after each backward pass. """
+    def enforce_upper_triangular_and_positive(self, grad):
+        """ Hook function that forces the weight to be upper triangular and positive after each backward pass. """
         with torch.no_grad():
             Q = self.bilinear.weight
-            Q.copy_(torch.triu(Q))  # Ensure the matrix remains upper triangular
+            Q.clamp_(min=forcedMinValQUT)  # Ensure all values remain positive
+            Q.copy_(torch.triu(Q))  # Ensure the matrix is upper triangular
         
         return grad  # Return the gradient unmodified (for normal backward pass)
 
 
+
 def custom_loss(Q, n):
-    # Extract the upper triangular matrix including diagonal
-    upper_triangular = torch.triu(Q)
-    
-    # Penalize negative or zero values in the upper triangular part
-    upper_loss = torch.sum(torch.relu(-upper_triangular))
-    
-    # Extract the lower triangular part (below the diagonal)
-    lower_triangular = torch.tril(Q, diagonal=-1)
-    
-    # Penalize any non-zero values in the lower triangular part
-    lower_loss = torch.sum(lower_triangular ** 2)  # Squaring to enforce exactly zero
-    
-    # Total loss: penalties for both upper and lower parts
-    total_loss = upper_loss + lower_loss
-    
-    return total_loss
+    #print(Q)
+    zeroCounter = 0
+    for i in range(0,n):
+        for j in range(i,n):
+            if Q[0][i][j].item() == 0:
+                zeroCounter += 1
+
+    #print(zeroCounter)
+
+    return torch.tensor(zeroCounter)
 
 def global_minimum_loss(Q, m_tensor):
     # Compute m^T * Q * m
@@ -142,8 +188,11 @@ def generate_all_binary_vectors(n, b):
 
 def makeQUpperTriangular(Q):
     for i in range(0,n):
-        for j in range(0, i):
-            Q[i,j] = 0
+        for j in range(0, n):
+            if(j<i):            #upper triangular
+                Q[i,j] = 0
+            else:
+                Q[i,j] = max(Q[i,j], forcedMinValQUT)   #positive values
 
 def makeQPositiveValued(Q):
     for i in range(0,n):
@@ -153,16 +202,21 @@ def makeQPositiveValued(Q):
 
 def trainOne():
     # Generate set F and map M
-    F, aFs  = generate_F_set(n, tFs)
+    m = generate_random_binary_vector(n, nSelectedPointAtMinimum)
+    F, aFs  = generate_F_set(n, tFs, m)
     tsSize  = int(aFs * tsPerc)
-    map, m = create_map(list(F), MVal)
+    map = create_map(F, MVal, mVal, m, overlap)
+
+    batchSize_ = min(batchSize, aFs)
 
     if(verbose):
         print("Problem dimensionality: ", n)
         print("Size of the training set: ", aFs)
         print("Size of the test set: ", tsSize)
-        print(f"Selected minimum point m (value {mVal:.1f}): {m}")
-        print("Training set:", map)
+        print(f"Selected minimum point m (value {mVal:.1f}): {[int(e) for e in m.tolist()]}")
+        print("Training set:")
+        for k, v in sorted(map.items(), key=lambda x: x[1]):
+            print(f'{list(k)}, {v:.2f}\thamming distance: {hamming_distance(torch.tensor(k), m)}')
         print("\n############################################################################################################\n")
 
 
@@ -183,37 +237,6 @@ def trainOne():
     train_pairs = [(x1, x2, map[tuple(x1.int().tolist())] + map[tuple(x2.int().tolist())])
                 for x1 in train_set for x2 in train_set]
 
-    '''while(ok):
-        total_loss = 0
-        for x1, x2, target in train_pairs:
-            optimizer.zero_grad()
-            output = bilinear_layer(x1, x2)
-            
-            # Loss based on the difference from the target value
-            mse_loss = nn.functional.mse_loss(output, torch.tensor([target]))
-            
-            # Force upper triangular constraint on the weight matrix Q
-            Q = bilinear_layer.bilinear.weight
-            constraint_loss = custom_loss(Q, n)
-            
-            # Total loss: MSE loss + constraint loss
-            loss = mse_loss + constraint_loss
-            loss.backward()
-            optimizer.step()
-            
-            total_loss += loss.item()
-
-        
-        # Print progress
-        if (currentEpoch + 1) % printEpochs == 0:
-            print(f'Epoch {currentEpoch+1}/{epochs}, Loss: {total_loss:.4f}')
-
-        currentEpoch += 1
-        ok = currentEpoch < epochs and abs(oldLoss - total_loss) > 0.1 
-        if(not ok and (currentEpoch + 1) % printEpochs != 0):
-            print(f'Epoch {currentEpoch+1}/{epochs}, Loss: {total_loss:.4f}')
-        oldLoss = total_loss
-    '''
     # Training loop
     currentEpoch = 0
     oldLoss = float('inf')
@@ -221,6 +244,8 @@ def trainOne():
     min_total_loss = float('inf')
     best_Q = None
     best_Q_epoch = 0
+
+
     while ok:
         total_loss = 0
         total_mse_loss = 0 
@@ -228,11 +253,11 @@ def trainOne():
         total_min_loss = 0
         Q = None
         random.shuffle(train_pairs)  # Shuffle training pairs for each epoch
-        for i in range(0, len(train_pairs), batchSize):
+        for i in range(0, len(train_pairs), batchSize_):
             # Prepare a batch of input pairs
-            batch = train_pairs[i:i + batchSize]
+            batch = train_pairs[i:i + batchSize_]
             
-            if len(batch) < batchSize:
+            if len(batch) < batchSize_:
                 continue  # Skip if the batch is smaller than the specified batch size
             
             x1_batch = torch.stack([pair[0] for pair in batch])  # Batch of x1 vectors
@@ -248,9 +273,9 @@ def trainOne():
             Q = bilinear_layer.bilinear.weight
 
             # Loss based on the difference from the target values
-            mse_loss = nn.functional.mse_loss(output, targets) * mse_loss_adj_factor
+            mse_loss = nn.functional.l1_loss(output, targets) * mse_loss_adj_factor
             constraint_loss = custom_loss(Q, n) * constraint_loss_adj_factor
-            min_loss = global_minimum_loss(Q, torch.tensor(m, dtype=torch.float32)) * min_loss_adj_factor
+            min_loss = global_minimum_loss(Q, m.clone().detach().requires_grad_(True)) * min_loss_adj_factor
 
             # Total loss: MSE loss + constraint loss
             loss = mse_loss + constraint_loss + min_loss
@@ -287,7 +312,7 @@ def trainOne():
 
 
     # Print the matrix Q
-    if(verbose or True):
+    if(verbose):
         print("Best learned matrix Q at epoch ", best_Q_epoch)
         print(Q)
 
@@ -296,18 +321,15 @@ def trainOne():
     makeQUpperTriangular(Q)
     #makeQPositiveValued(Q)
 
-    if(verbose):
+    if(printFinalQs):
         print("\nZeroed Q:")
         print(Q)
 
         print("\n############################################################################################################\n")
 
 
-    # Convert the chosen minimum vector m to a tensor
-    m_tensor = torch.tensor(m, dtype=torch.float32)
-
     # Compute m^T * Q * m (the target minimum value)
-    min_value_at_m = torch.matmul(m_tensor, torch.matmul(Q, m_tensor)).item()
+    min_value_at_m = torch.matmul(m, torch.matmul(Q, m)).item()
     if(verbose):
         print(f"Value at m (global minimum candidate): {min_value_at_m}")
 
@@ -319,16 +341,16 @@ def trainOne():
     global_max_value = float('-inf')        #not needed, just to test statistics
     avgValue = 0
     min_point = None
-    values = set([])                             
+    values = set([])
+    res = {}                             
     # Check all possible binary vectors
     for x_tensor in all_vectors:
         # Compute x^T * Q * x
         value = torch.matmul(x_tensor, torch.matmul(Q, x_tensor)).item()
         values.add(value)
+
+        res[tuple(x_tensor.tolist())] = value
         
-        # Print the value at each vector
-        if(verbose):
-            print(f"Value at x = {[int(xi) for xi in x_tensor.tolist()]}: {value}")
 
         # Track the minimum value and the corresponding vector
         if value < global_min_value:
@@ -341,9 +363,18 @@ def trainOne():
     if(verbose):
         print("\n############################################################################################################\n")
 
+        
+    # Print the value at each vector
+    if(verbose):
+        counter = 0
+        for k, v in sorted(res.items(), key=lambda x: x[1]):
+            if counter >= 50:
+                break
+            print(f"Value at x = {[int(xi) for xi in list(k)]}: {v:.2f}\t#hamming = {hamming_distance(torch.tensor(k), m)}\t#selected points = {k.count(1   )}")
+            counter += 1
 
     # Final check to see if the global minimum is at m
-    valueAtm = torch.matmul(m_tensor, torch.matmul(Q, m_tensor)).item()
+    valueAtm = torch.matmul(m, torch.matmul(Q, m)).item()
     wellDone = global_min_value == valueAtm
     if(verbose):
         if wellDone:
@@ -353,7 +384,9 @@ def trainOne():
 
     nBetterMinimums = sorted(values).index(valueAtm)
 
-    return wellDone, global_min_value, global_max_value, avgValue, valueAtm, m.count(1), min_point.tolist().count(1), m, tuple(min_point.tolist()), len(all_vectors), nBetterMinimums, len(values)
+    nZerosUpperTriangBestQ = custom_loss(best_Q, n)
+
+    return wellDone, global_min_value, global_max_value, avgValue, valueAtm, m.tolist().count(1), min_point.tolist().count(1), m, tuple(min_point.tolist()), len(all_vectors), nBetterMinimums, len(values), best_Q_epoch, nZerosUpperTriangBestQ
 
 def updateAvg(avg, iter, newVal):
     if(iter == 0):
@@ -365,20 +398,27 @@ def updateAvg(avg, iter, newVal):
 
 torch.set_printoptions(linewidth=200)
 
-n = 9                      # problem dimensionality
-tFs = min(64, pow(2,n))     # tentative size of the subset of feasible point (generated as random, the duplicates are removed)
+n = 20                      # problem dimensionality
+tFs = 50
+tFs = min(tFs, pow(2,n))     # tentative size of the subset of feasible point (generated as random, the duplicates are removed)
 tsPerc = 0.5                # size of the test set
 MVal = 100.0                 # maximum value possibly reachable by the func
 mVal = 1.2
-epochs = 10
-printEpochs = 5000
-batchSize = 64
-mse_loss_adj_factor = .0
-constraint_loss_adj_factor = 1.0
-min_loss_adj_factor = 50.0
-Q_init_type = 'near_id'          #choose between id, near_id, psd, m_biased
+overlap = 0.1
+nSelectedPointAtMinimum = 3
+forcedMinValQUT = 0.1
+randomMeanInit = 5
+randomStdInit = 0.1
+
+epochs = 15
+printEpochs = 5
+batchSize = 32
+mse_loss_adj_factor = 1.0
+constraint_loss_adj_factor = 1.0    #forcing the matrix in the  forward/backward pass will result in this loss being 0 
+min_loss_adj_factor = 1.0
+Q_init_type = 'random'          #choose between id, near_id, psd, m_biased, random
 b = 2                       # minimum number of point that amust be visible for each image
-nTest = 500
+nTest = 1
 
 verbose = True
 
@@ -392,10 +432,14 @@ avgNOnesInActualMin = 0
 avgNBetterMinimums = 0
 mSet = set([])
 minPointset = set([])
-print("iter\t\tOK\t\tavgMinVal\tavgVal\t\tavgMaxVal\tavgValm\t\tavg #ones @m\tavg #ones @min\t# distinct m\t# distinct min point\tavg # better minimums on wrong Qs")
-verbose = False
+if(nTest > 1):
+    verbose = False
+printFinalQs = False or verbose
+
+print("iter\t\tOK\t\tavgMinVal\tavgVal\t\tavgMaxVal\tavgValm\t\tavg #ones @min\t# distinct m\t\t# distinct min point\t# bett. min wr Q\tbest epoch\tnZerosUpperTriangBestQ")
+
 for iter in range(0, nTest):
-    wellDone, global_min_value, global_max_value, avgValue, valueAtm, nOnesIn_m, nOnesInActualMin, m, minPoint, nSensiblePoints, nBetterMinimums, nDistinctValues = trainOne()
+    wellDone, global_min_value, global_max_value, avgValue, valueAtm, nOnesIn_m, nOnesInActualMin, m, minPoint, nSensiblePoints, nBetterMinimums, nDistinctValues, bestQEpoch, nZerosUpperTriangBestQ = trainOne()
     totalOk += wellDone
     avgMinVal = updateAvg(avgMinVal, iter, global_min_value)
     avgAvgVal = updateAvg(avgAvgVal, iter, avgValue)
@@ -408,6 +452,6 @@ for iter in range(0, nTest):
     mSet.add(m)
     minPointset.add(minPoint)
 
-    print(f'{iter}\t\t{totalOk}/{iter+1}\t\t{avgMinVal:.2f}\t\t{avgAvgVal:.2f}\t\t{avgMaxVal:.2f}\t\t{avgValueAtm:.2f}\t\t{avgNOnesIn_m:.2f}/{n}\t\t{avgNOnesInActualMin:.2f}/{n}\t\t{len(mSet)}/{nSensiblePoints}\t\t{len(minPointset)}/{nSensiblePoints}\t\t\t{avgNBetterMinimums:.2f}/{nDistinctValues}')
+    print(f'{iter}\t\t{totalOk}/{iter+1}\t\t{avgMinVal:.2f}\t\t{avgAvgVal:.2f}\t\t{avgMaxVal:.2f}\t\t{avgValueAtm:.2f}\t\t{avgNOnesInActualMin:.2f}/{n}\t\t{len(mSet)}/{nSensiblePoints}\t\t{len(minPointset)}/{nSensiblePoints}\t\t\t{avgNBetterMinimums:.2f}/{nDistinctValues}\t\t{bestQEpoch}\t\t{nZerosUpperTriangBestQ}')
 
 
