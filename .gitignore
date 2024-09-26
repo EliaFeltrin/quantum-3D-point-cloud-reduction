@@ -8,3 +8,4 @@ syn_prob/__pycache__/bilinear.cpython-311.pyc
 syn_prob/__pycache__/solver.cpython-311.pyc
 *.pyc
 syn_prob/oldVersionFunc.py
+syn_prob/results.txt

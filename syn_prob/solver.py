@@ -1,6 +1,8 @@
 import numpy as np
 import gurobipy as gp
 from gurobipy import GRB
+import sys
+import os
 
 def solve_bqp(Q, A, b):
     """
@@ -17,11 +19,13 @@ def solve_bqp(Q, A, b):
         If no optimal solution is found, the function returns `None, None`.
     """
 
+    sys.stdout = open(os.devnull, 'w')      #output suppresion
+
     # Convert torch tensors Q and A to numpy arrays
     Q_np = Q.detach().cpu().numpy()  # Ensure it's on CPU and then convert to numpy
     n = Q_np.shape[0]
     m = Q_np.shape[0]
-    
+
     A_np = A.detach().cpu().numpy()
     
     b_np = np.array([b for _ in range(0, m)])
@@ -52,13 +56,16 @@ def solve_bqp(Q, A, b):
     
     # Optimize the model
     model.optimize()
+
     
     # Extract the optimal solution
     if model.status == GRB.OPTIMAL:
         x_opt = np.array([x[i].x for i in range(n)])
         print(f"Optimal solution: {x_opt}")
         print(f"Objective value: {model.ObjVal}")
+        sys.stdout = sys.__stdout__
         return x_opt, model.ObjVal
     else:
         print("No optimal solution found.")
+        sys.stdout = sys.__stdout__
         return None, None

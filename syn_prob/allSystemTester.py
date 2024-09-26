@@ -14,12 +14,11 @@ def updateAvg(avg, iter, newVal):
 
 torch.set_printoptions(linewidth=500)
 
-nSelectedPointAtMinimum = 3
-b = 2                       # minimum number of point that amust be visible for each image
-n = 20                      # problem dimensionality
-tFs = 50
-tFs = min(tFs, math.comb(n, (n-nSelectedPointAtMinimum)))     # tentative size of the subset of feasible point (generated as random, the duplicates are removed)
-tsPerc = 0.5                # size of the test set
+nSelectedPointAtMinimum = 10
+b = 4                       # minimum number of point that amust be visible for each image
+n = 30                     # problem dimensionality
+tFs = 1024
+#tFs = min(tFs, math.comb(n, (n-nSelectedPointAtMinimum)))     # tentative size of the subset of feasible point (generated as random, the duplicates are removed)
 MVal = 100.0                 # maximum value possibly reachable by the func
 mVal = -100.0
 overlap = 0.1
@@ -27,9 +26,9 @@ forcedMinValQUT = float('-inf')
 randomMeanInit = 0
 randomStdInit = 0.2
 
-epochs = 1
-printEpochs = 5
-batchSize = 32
+epochs = 150
+printEpochs = 1
+batchSize = 128
 mse_loss_adj_factor = 1.0
 constraint_loss_adj_factor = 1.0    #forcing the matrix in the  forward/backward pass will result in this loss being 0 
 min_loss_adj_factor = 1.0
@@ -37,7 +36,7 @@ mean_std_loss_adj_factor = 100.0
 Q_init_type = 'random'          #choose between id, near_id, psd, m_biased, random
 nTest = 1
 
-nImages = 6
+nImages = 3
 
 verbose = True
 visProb = 0.2
@@ -60,12 +59,12 @@ minPointset = set([])
 if(nTest > 1):
     verbose = False
 printFinalQs = False or verbose
-check = True
+check = False
 
 print("iter\t\t|OK\t\t|avgMinVal\t|avgVal\t\t|avgMaxVal\t|avgValm\t|avg #ones @min\t\t|# distinct m\t\t|# distinct min point\t|avg # bett. min\t|best epoch\t|avg nZerosUpperTriangQ\t|avg Qmean\t|avg QstdDev")
 
 for iter in range(0, nTest):
-    wellDone, global_min_value, global_max_value, avgValue, valueAtm, nOnesIn_m, nOnesInActualMin, m, minPoint, nSensiblePoints, nBetterMinimums, nDistinctValues, bestQEpoch, nZerosUpperTriangBestQ, bestQmean, bestQstd, F, Q, m = tr.trainOne(nSelectedPointAtMinimum, n, tFs, tsPerc, MVal, mVal, overlap, batchSize, Q_init_type, verbose, mse_loss_adj_factor, constraint_loss_adj_factor, min_loss_adj_factor, mean_std_loss_adj_factor, randomMeanInit, randomStdInit, printEpochs, epochs, forcedMinValQUT, printFinalQs, check, b)
+    wellDone, global_min_value, global_max_value, avgValue, valueAtm, nOnesIn_m, nOnesInActualMin, m, minPoint, nSensiblePoints, nBetterMinimums, nDistinctValues, bestQEpoch, nZerosUpperTriangBestQ, bestQmean, bestQstd, F, Q, m = tr.trainOne(nSelectedPointAtMinimum, n, tFs, MVal, mVal, overlap, batchSize, Q_init_type, verbose, mse_loss_adj_factor, constraint_loss_adj_factor, min_loss_adj_factor, mean_std_loss_adj_factor, randomMeanInit, randomStdInit, printEpochs, epochs, forcedMinValQUT, printFinalQs, check, b)
     totalOk += wellDone
     avgMinVal = updateAvg(avgMinVal, iter, global_min_value)
     avgAvgVal = updateAvg(avgAvgVal, iter, avgValue)

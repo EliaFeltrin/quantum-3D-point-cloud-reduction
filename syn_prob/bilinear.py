@@ -42,6 +42,8 @@ def generate_F_set(n, l, m_vector):
     :rtype: set
     """
 
+    print("start")
+
     # Compute the coefficient A of the hyperbolic function that determines the number of points in the training set based on increasing distance from m
     denom = sum(1 / i for i in range(1, n + 1))
     A = l / denom
@@ -51,25 +53,55 @@ def generate_F_set(n, l, m_vector):
     F.add(tuple(m_vector.tolist()))  # Add the initial m_vector to the set
     nPoint = 0
     j = 1
+    missing = 0
 
     # Populating F with at least l points
-    while len(F) < l:
-        oldFlen = len(F)
-        part = math.ceil(A / j)
+    for j in range(1, math.ceil(n/2)):
+        t_part_low = math.ceil(A/j) + missing
+        t_part_high = math.ceil(A/(n-j))
+        poss = math.comb(n, j)
+        part_low = min(t_part_low, poss)
+        part_high = min(t_part_high, poss)
+        if j == math.ceil(n/2) and n%2 == 1:
+            t_part_high = 0
+            part_high = 0
+        missing = t_part_high + t_part_low - part_high - part_low
+
+
+        # print(f'generating {part_low} vetors at {j} hamming distance')
+        # print(f'generating {part_high} vetors at {n-j} hamming distance')
+        # print("\n")
 
         # Generating new vectors with `j` bits of distance from `m_vector`
-        while len(F) - oldFlen < part:
+        high_counter = 0
+        low_counter = 0
+        while high_counter < part_high:
             # Create a copy of m_vector
             vector = m_vector.clone()
-            # Generate `j` random positions to flip
+            flip_positions = random.sample(range(n), n-j)
+            vector[flip_positions] = 1 - vector[flip_positions]  # Flip the bits at selected positions
+
+            # Add the new vector to F
+            
+            high_counter -= len(F) 
+            F.add(tuple(vector.tolist()))
+            high_counter += len(F)
+
+        while low_counter < part_low:
+            # Create a copy of m_vector
+            vector = m_vector.clone()
             flip_positions = random.sample(range(n), j)
             vector[flip_positions] = 1 - vector[flip_positions]  # Flip the bits at selected positions
 
             # Add the new vector to F
-            F.add(tuple(vector.tolist()))
 
-        nPoint += part
-        j += 1
+            low_counter -= len(F)
+            F.add(tuple(vector.tolist()))
+            low_counter += len(F)
+
+        nPoint += part_high + part_low
+
+    #print(f"end: {nPoint}: {len(F)}")
 
     return F, len(F)
 

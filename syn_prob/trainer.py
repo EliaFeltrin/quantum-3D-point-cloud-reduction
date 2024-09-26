@@ -8,7 +8,7 @@ import statistics
 
 
 
-def trainOne(nSelectedPointAtMinimum, n, tFs, tsPerc, MVal, mVal, overlap, batchSize, Q_init_type, verbose, mse_loss_adj_factor, constraint_loss_adj_factor, min_loss_adj_factor, mean_std_loss_adj_factor, randomMeanInit, randomStdInit, printEpochs, epochs, forcedMinValQUT, printFinalQs, check, b):
+def trainOne(nSelectedPointAtMinimum, n, tFs, MVal, mVal, overlap, batchSize, Q_init_type, verbose, mse_loss_adj_factor, constraint_loss_adj_factor, min_loss_adj_factor, mean_std_loss_adj_factor, randomMeanInit, randomStdInit, printEpochs, epochs, forcedMinValQUT, printFinalQs, check, b):
     """
     Trains a bilinear layer on a set of random binary vectors to learn a matrix Q that satisfies multiple constraints 
     and objectives, such as minimizing the loss, enforcing an upper triangular structure, and finding a global minimum at a specific point.
@@ -63,7 +63,6 @@ def trainOne(nSelectedPointAtMinimum, n, tFs, tsPerc, MVal, mVal, overlap, batch
     # Generate set F and map M
     m = bl.generate_random_binary_vector(n, nSelectedPointAtMinimum)
     F, aFs  = bl.generate_F_set(n, tFs, m)
-    tsSize  = int(aFs * tsPerc)
     map = bl.create_map(F, MVal, mVal, m, overlap)
 
     batchSize_ = min(batchSize, aFs)
@@ -71,7 +70,6 @@ def trainOne(nSelectedPointAtMinimum, n, tFs, tsPerc, MVal, mVal, overlap, batch
     if(verbose):
         print("Problem dimensionality: ", n)
         print("Size of the training set: ", aFs)
-        print("Size of the test set: ", tsSize)
         print(f"Selected minimum point m (value {mVal:.1f}): {[int(e) for e in m.tolist()]}\t ones at indexes {[i+1 for i, x in enumerate(m.tolist()) if x == 1]}")
         print("Training set:")
         for k, v in sorted(map.items(), key=lambda x: x[1]):
@@ -195,7 +193,16 @@ def trainOne(nSelectedPointAtMinimum, n, tFs, tsPerc, MVal, mVal, overlap, batch
     if(verbose):
         print(f"Value at m (global minimum candidate): {min_value_at_m}")
 
-    nBetterMinimums = None
+    nBetterMinimums = -1
+    global_min_value = float('-inf')
+    global_max_value = float('-inf')        
+    avgValue = float('-inf')
+    min_point = torch.tensor([-1 for _ in range(0, n)])
+    values = set([])
+    res = {} 
+    wellDone = -1
+    all_vectors = []
+
 
     if check:
         # Generate all possible binary vectors of length n and removing 0 (it is not a feasible point whatever A is)
@@ -206,8 +213,7 @@ def trainOne(nSelectedPointAtMinimum, n, tFs, tsPerc, MVal, mVal, overlap, batch
         global_max_value = float('-inf')        #not needed, just to test statistics
         avgValue = 0
         min_point = None
-        values = set([])
-        res = {}          
+        
 
         # Check all possible binary vectors
         for x_tensor in all_vectors:
@@ -245,7 +251,8 @@ def trainOne(nSelectedPointAtMinimum, n, tFs, tsPerc, MVal, mVal, overlap, batch
                 print(f"[!] : The global minimum has different value wrt the function in m: {global_min_value} instead of {valueAtm}")
 
         nBetterMinimums = sorted(values).index(valueAtm)
-
+    
+    valueAtm = torch.matmul(m, torch.matmul(Q, m)).item()
     nZerosUpperTriangBestQ = bl.custom_loss(best_Q, n)
 
     
