@@ -69,7 +69,6 @@ def gen_Q(n, type, min_p_lst, min_val, res = 1000, check = True, float_prec = 1e
             for mpi in [i for i in range(len(vals)) if abs(vals[i] - min(vals)) < float_prec]:
                 ok_ps.append(min_p_lst[mpi])
 
-            print(Q)
             return Q, ok_ps
     
     elif type == 'triu':

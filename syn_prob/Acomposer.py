@@ -281,11 +281,6 @@ def gen_A(m, n, min_p, b, vis_prob, rem_prob):
                     same_cols[selected_idx[left_c]].append(not_selected_idx[right_c])
                 except KeyError:
                     same_cols[selected_idx[left_c]] = [not_selected_idx[right_c]]
-
-    print(up_left_A, "\n")
-    print(up_right_A, "\n")
-    print(low_left_A, "\n")
-    print(low_right_A, "\n")
     
     return A, same_cols
 
