@@ -1,6 +1,7 @@
 import torch
 import random
 import math
+import itertools
 
 # def composeA(m, n, minPoint, b, visProb, onePer):
 #     """
