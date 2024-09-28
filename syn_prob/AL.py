@@ -33,11 +33,15 @@ def al(Q_, A_, b_, mu_, lambda__, rho_, max_iter = 1000):
 
         qubo = qubo_dict_from_matrix(Q)
 
-        # Solve using Simulated Annealing
+        #Solve using Simulated Annealing
         solution = sampler.sample_qubo(qubo, num_reads=100)
+        
 
-        # Get the best solution
+        #Get the best solution
         al_min_p = torch.tensor([solution.first.sample[i] for i in range(0, n)]).float()
+
+        # al_min_p, val = sl.solve_bqp(Q, torch.tensor([]), torch.tensor([]))
+        # al_min_p = torch.tensor(al_min_p, dtype = torch.float32)
 
         c = torch.matmul(A, al_min_p) - b
 

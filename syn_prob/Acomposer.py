@@ -3,76 +3,6 @@ import random
 import math
 import itertools
 
-# def composeA(m, n, minPoint, b, visProb, onePer):
-#     """
-#     Composes a binary matrix `A` of size (m, n) such that minPoint is a feasible point and at least onePer of the entries are set to one.
-    
-#     Args:
-#         m (int): The number of rows in the matrix `A`.
-#         n (int): The number of columns in the matrix `A`.
-#         minPoint (list): A binary vector of size `n` representing the minimum point, where 1s indicate selected columns.
-#         b (int): The number of guaranteed 1s in each row, randomly selected from the columns indicated by 1 in `minPoint`.
-#         visProb (float): Probability of adding additional 1s in the columns indicated by `minPoint` but not selected initially.
-#         onePer (float): The desired proportion of 1s in the entire matrix `A`.
-
-#     Returns:
-#         A (torch.Tensor): A binary matrix of size (m, n), where each row has exactly `b` guaranteed 1s and additional 1s are 
-#                           placed with probability `visProb`. The total number of 1s in the matrix is approximately `m * n * onePer`.
-#     """
-
-
-#     A = torch.zeros(m, n, dtype = torch.float32)
-#     oneIndexes = [i for i, x in enumerate(list(minPoint)) if x == 1]
-#     global_missing = oneIndexes.copy()
-#     freePos = list(range(0, m*n))
-#     vis_added_indexes = []
-
-#     for r in range(0,m):
-#         missing = oneIndexes.copy()
-#         nTaken = min(len(global_missing), b)
-#         for c in random.sample(global_missing, nTaken):
-#             A[r][c] = 1
-#             global_missing.remove(c)
-#             missing.remove(c)
-#             freePos.remove(r*n + c)
-
-#         for c in random.sample(missing, b - nTaken):
-#             A[r][c] = 1
-#             missing.remove(c)
-#             freePos.remove(r*n + c)
-
-#         # print(" ", A[r])
-
-#     blocked = torch.tensor([False for _ in range(0,m)])
-#     new_A = A.clone()
-
-#     randomOneIndexes = oneIndexes.copy()
-#     random.shuffle(randomOneIndexes)
-#     already_added = torch.tensor([False for _ in range(0,m)])
-#     for c in randomOneIndexes:
-#         randomRows = list(range(0,m))
-#         random.shuffle(randomRows)
-#         for r in randomRows:
-#             if A[r][c] == 0 and random.random() < visProb:
-#                 toAdd = torch.zeros(m)
-#                 toAdd[r] = 1
-#                 ok = True
-#                 for c1 in oneIndexes:
-#                     if c1 != c and torch.logical_and(torch.logical_or(blocked, toAdd), A[:,c1]).sum().item() >= A[:,c1].sum().item():
-#                         ok = False
-#                         break
-#                 if ok:
-#                     new_A[r,c] = 1
-#                     blocked[r] = True
-
-#     # nOnes = (A == 1).sum().item()
-#     # if nOnes < int(m*n*onePer - nOnes):
-#     #     for compInd in random.sample(freePos, int(m*n*onePer - nOnes)):
-#     #         A[compInd // n][compInd % n] = 1
-
-
-#     return new_A
-
 def point_locator(A):
     map = {}
     m = A.size()[0]
@@ -146,58 +76,8 @@ def generate_alternative_vectors(min_p, swap_dict, alt):
         
     return new[1:]
 
-# def add_visibility(A, level, n_point_to_add, min_p, b):
-    
-#     m = A.size()[0]
-#     n = A.size()[1]
 
-#     vis_map = point_locator(A)
-
-#     npa = n_point_to_add    
-#     if npa == 'all':
-#         npa = len([c for c in range(0, n) if (len(vis_map[c]) < level and min_p[c] == 0)])
-
-#     added = 0
-#     up_level = 0
-
-#     forbidden_rows_idxs = [i for i, b in enumerate((torch.matmul(A, min_p) == b)) if b == True]
-#     # print(f'forbidden_cols_idxs: {forbidden_cols_idxs}')
-#     while added < npa:
-#         free_index = [c for c in range(0, n) if (len(vis_map[c]) == up_level and min_p[c] == 0)]
-#         # print(free_index)
-#         column_to_fill = random.sample(free_index, min(len(free_index), npa-added))
-#         # print(column_to_fill)
-#         added += len(column_to_fill)
-#         # print(added)
-#         for c in column_to_fill:
-#             n_improvable = len(forbidden_rows_idxs)
-
-#             available_pos = [i for i in range(0,m) if i not in vis_map[c]]
-#             try:
-#                 to_remove = random.sample(forbidden_rows_idxs, len(forbidden_rows_idxs)-1)
-#                 for r in to_remove:
-#                     available_pos.remove(r)
-#             except ValueError:
-#                 pass
-#             # print(f'available_pos before: {available_pos}')
-#             removable = [i for i in available_pos if i in forbidden_rows_idxs]
-#             # print(f'removable: {removable}')
-#             # try:
-#             #     available_pos.remove(random.sample(removable, 1)[0])
-#             # except ValueError:
-#             #     pass
-#             # print(f'available_pos: {available_pos}')
-#             if len(available_pos) >= level - len(vis_map[c]):
-#                 rows = random.sample(available_pos, level - len(vis_map[c]))
-#                 # for i in rows:
-#                 #     if i in forbidden_rows_idxs
-#                 A[rows, c] = 1
-                
-#         up_level += 1
-
-#     return A
-
-def gen_A(m, n, min_p, b, vis_prob, rem_prob):
+def gen_A(m, n, min_p, b, vis_prob, rem_prob, check_equal_cols = False):
     n_selected_c = int(min_p.sum().item())
     selected_idx = [i for i, b in enumerate(min_p.tolist()) if b == 1]
     not_selected_idx = [i for i, b in enumerate(min_p.tolist()) if b == 0]
@@ -272,17 +152,18 @@ def gen_A(m, n, min_p, b, vis_prob, rem_prob):
         if A[:, c].sum().item() == 0:
             A[random.randint(diag_len, m-1), c] = 1
 
-    same_cols = {}
-    #detecting same columns                                                             
-    for left_c in range(0, n_selected_c):
-        for right_c in range(0, n-n_selected_c):
-            if (A[:,selected_idx[left_c]] == A[:,not_selected_idx[right_c]]).sum().item() == m:
-                try:
-                    same_cols[selected_idx[left_c]].append(not_selected_idx[right_c])
-                except KeyError:
-                    same_cols[selected_idx[left_c]] = [not_selected_idx[right_c]]
+    equal_cols = {}
+    if check_equal_cols:
+        #detecting same columns                                                             
+        for left_c in range(0, n_selected_c):
+            for right_c in range(0, n-n_selected_c):
+                if (A[:,selected_idx[left_c]] == A[:,not_selected_idx[right_c]]).sum().item() == m:
+                    try:
+                        equal_cols[selected_idx[left_c]].append(not_selected_idx[right_c])
+                    except KeyError:
+                        equal_cols[selected_idx[left_c]] = [not_selected_idx[right_c]]
     
-    return A, same_cols
+    return A, equal_cols
 
             
 

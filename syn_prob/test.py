@@ -22,23 +22,28 @@ init_mu = 0.1
 init_lambda = (torch.rand(m) - 0.5) / 10
 init_rho = 1.5
 
+print("Generating global minimum...")
 min_ps = [bl.generate_random_binary_vector(n, n_selected_points)]
 
-A, col_equiv = ac.gen_A(m, n, min_ps[0], b, vis_prob, rem_prob)
+print("Generating A...")
+A, _ = ac.gen_A(m, n, min_ps[0], b, vis_prob, rem_prob)
+print("Generating Q...")
 Q, new_min_ps = qc.gen_Q(n, q_type, min_ps, min_val)
 
-print(f'a priori min_p ones indexes, val, bounds:')
+print(f'A priori global minimum one indexes, val, bounds:')
 for mp in new_min_ps:
     print(f'{[i for i, b in enumerate(mp) if b==1]}, {min_val:.2f}, {torch.matmul(A, mp).tolist()}')
 print("\n")
 
+print("LP global minimum one indexes, val, bounds:")
 opt, val = sl.solve_bqp(Q, A, b)
-print(f'a posteriori min_p ones indexes, val, bounds:\n{[i for i, b in enumerate(list(opt)) if b == 1]}, {val:.2f}, {torch.matmul(A, torch.tensor(opt, dtype=torch.float32)).tolist()}')
+print(f'{[i for i, b in enumerate(list(opt)) if b == 1]}, {val:.2f}, {torch.matmul(A, torch.tensor(opt, dtype=torch.float32)).tolist()}')
 print("\n")
 
 al_min_p, mu, lambda_, iter = al.al(Q, A, b, init_mu, init_lambda, init_rho)
 al_val = torch.matmul(al_min_p, torch.matmul(Q, al_min_p)).item()
-print(f'AL min_p ones indexes, val, bounds:\n{[i for i, b in enumerate(al_min_p) if b==1]}, {al_val:.2f}, {torch.matmul(A, al_min_p).tolist()}')
+print("AL global minimum one indexes, val, bounds:")
+print(f'{[i for i, b in enumerate(al_min_p) if b==1]}, {al_val:.2f}, {torch.matmul(A, al_min_p).tolist()}')
 print("\n")
 
 
