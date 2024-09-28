@@ -47,13 +47,13 @@ if abs(val - min_val) > float_prec:
 elif not torch.equal(min_ps[0], torch.tensor(opt, dtype=torch.float32)):
     print(f'This objective function has more than one global minimum')
 
-print("Solving with AL with CPLEX")
-Q_cplex = Q.clone().float()
-for i in range(0, n):
-    for j in range(0, i):
-        Q_cplex[i, j] = Q_cplex[j, i]
-al_cplex_min_p, mu_cplex, lambda_cplex, iter_cplex = al.al_cplex(Q_cplex, A, b, init_mu, init_lambda, init_rho)
-al_cplex_val = torch.matmul(al_cplex_min_p, torch.matmul(Q, al_cplex_min_p)).item()
+# print("Solving with AL with CPLEX")
+# Q_cplex = Q.clone().float()
+# for i in range(0, n):
+#     for j in range(0, i):
+#         Q_cplex[i, j] = Q_cplex[j, i]
+# al_cplex_min_p, mu_cplex, lambda_cplex, iter_cplex = al.al_cplex(Q_cplex, A, b, init_mu, init_lambda, init_rho)
+# al_cplex_val = torch.matmul(al_cplex_min_p, torch.matmul(Q, al_cplex_min_p)).item()
 
 print("Solving with AL with QBsolv")
 al_qb_min_p, mu_qb, lambda_qb, iter_qb = al.al_qbsolv(Q, A, b, init_mu, init_lambda, init_rho)
@@ -75,14 +75,14 @@ print("CPLEX - AL global minimum one indexes, val, bounds:")
 print(f'{[i for i, b in enumerate(al_cplex_min_p) if b==1]}, {al_cplex_val:.2f}, {torch.matmul(A, al_cplex_min_p).tolist()}')
 print("\n")
 
-if torch.equal(min_ps[0], al_cplex_min_p):
-    print(f"OK! same point found in {iter_cplex+1} iterations.")
-elif abs(val - al_cplex_val) < float_prec:
-    print(f"OK! another global minimum with value {min_val} found in {iter_cplex+1}")
-else:
-    print(f'ERROR: AL found a global minimum with value {al_cplex_val} in {iter_cplex+1}')
+# if torch.equal(min_ps[0], al_cplex_min_p):
+#     print(f"OK! same point found in {iter_cplex+1} iterations.")
+# elif abs(val - al_cplex_val) < float_prec:
+#     print(f"OK! another global minimum with value {min_val} found in {iter_cplex+1}")
+# else:
+#     print(f'ERROR: AL found a global minimum with value {al_cplex_val} in {iter_cplex+1}')
 
-print(f'Final params: mu = {mu_cplex:.4f}, lambda = {lambda_cplex.tolist()}\n')
+# print(f'Final params: mu = {mu_cplex:.4f}, lambda = {lambda_cplex.tolist()}\n')
 
 
 
