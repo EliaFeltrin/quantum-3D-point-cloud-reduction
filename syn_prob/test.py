@@ -71,9 +71,9 @@ print("\n")
 
 
 
-print("CPLEX - AL global minimum one indexes, val, bounds:")
-print(f'{[i for i, b in enumerate(al_cplex_min_p) if b==1]}, {al_cplex_val:.2f}, {torch.matmul(A, al_cplex_min_p).tolist()}')
-print("\n")
+# print("CPLEX - AL global minimum one indexes, val, bounds:")
+# print(f'{[i for i, b in enumerate(al_cplex_min_p) if b==1]}, {al_cplex_val:.2f}, {torch.matmul(A, al_cplex_min_p).tolist()}')
+# print("\n")
 
 # if torch.equal(min_ps[0], al_cplex_min_p):
 #     print(f"OK! same point found in {iter_cplex+1} iterations.")
